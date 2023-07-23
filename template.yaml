@@ -1,59 +1,96 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: >
-  kinesis-test
+Description: An AWS Serverless Application.
 
-  Sample SAM Template for kinesis-test
-
-# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
     Timeout: 3
 
-Resources:
-  # bucket that stores the static website
-  WebsiteBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      AccessControl: PublicRead
-      WebsiteConfiguration:
-        IndexDocument: index.html # Your landing page
+Outputs:
+  ApiGatewayUrl:
+    Description: "URL of the Prod stage for MyApi"
+    Value: !Sub "https://${MyApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  S3Bucket:
+    Description: "Name of the S3 bucket for the React app"
+    Value: "your-s3-bucket-name"
 
-  HelloWorldFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+Resources:
+  MyApi:
+    Type: AWS::Serverless::Api
     Properties:
-      CodeUri: hello-world/
+      StageName: prod
+
+  SendDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: sendData/
       Handler: app.lambdaHandler
       Runtime: nodejs18.x
       Architectures:
         - x86_64
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AmazonKinesisFullAccess
+      Environment:
+        Variables:
+          STREAM_NAME: !Ref MyKinesisStream
+          DYNAMO_DB_TABLE: !Ref DynamoDBTable
       Events:
-        HelloWorld:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+        SendData:
+          Type: Api
           Properties:
-            Path: /hello
-            Method: get
-    Metadata: # Manage esbuild properties
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: "es2020"
-        Sourcemap: true
-        EntryPoints:
-          - app.ts
+            Path: /send
+            Method: post
+            RestApiId: !Ref MyApi
 
-Outputs:
-  WebsiteBucketName:
-    Description: "S3 bucket name where the website is hosted"
-    Value: !Ref WebsiteBucket
-    Export:
-      Name: WebsiteBucketName
-  # HelloWorldApi:
-  #   Description: "API Gateway endpoint URL for Prod stage for Hello World function"
-  #   Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
-  HelloWorldFunction:
-    Description: "Hello World Lambda Function ARN"
-    Value: !GetAtt HelloWorldFunction.Arn
-  HelloWorldFunctionIamRole:
-    Description: "Implicit IAM Role created for Hello World function"
-    Value: !GetAtt HelloWorldFunctionRole.Arn
+  PollDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: pollData/
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      Architectures:
+        - x86_64
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AmazonKinesisFullAccess
+      Environment:
+        Variables:
+          STREAM_NAME: !Ref MyKinesisStream
+          DYNAMO_DB_TABLE: !Ref DynamoDBTable
+      Events:
+        PollData:
+          Type: Api
+          Properties:
+            Path: /poll
+            Method: get
+            RestApiId: !Ref MyApi
+
+  MyKinesisStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      ShardCount: 1
+      RetentionPeriodHours: 24
+
+  DynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: shardId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: shardId
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+
+  

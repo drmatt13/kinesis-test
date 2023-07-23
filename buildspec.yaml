@@ -1,0 +1,21 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+    commands:
+      - echo Installing source NPM dependencies...
+      - npm install
+  pre_build:
+    commands:
+      - echo Pre-build phase...
+      - sed -i -e "s|__API_GATEWAY_ENDPOINT__|$API_GATEWAY_ENDPOINT|g" .env # Replace placeholder with env variable
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Compiling the Node.js code...
+      - npm run build
+  post_build:
+    commands:
+      - aws s3 sync build/ s3://$S3_BUCKET
